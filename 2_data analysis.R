@@ -9,14 +9,14 @@ rm(list=ls())
 sourceDir(file.path('.','function'))
 
 #setwd('D:/PAM_RABO/finless_neonate_HK')
-setwd('Y:/APELAFICO/')
+setwd('D:/git/APELAFICO_OWF_study/')
 #setwd('G:/git/WBAT_APELAFICO')
 
 figurePath    <- file.path('.','figures')
 dataPath      <- file.path('.','data')
 resultPath    <- file.path('.','results')
 
-WBAT.tab <- read.csv('Z:/APELAFICO/LSSS/survey_db.csv')
+WBAT.tab <- read.csv(file.path(dataPath,'survey_db.csv'))
 WBAT.tab <- WBAT.tab[,c(1:5,8,9)]
 WBAT.tab$dataSet_station <- paste0(WBAT.tab$dataSet,'_',WBAT.tab$station)
 
