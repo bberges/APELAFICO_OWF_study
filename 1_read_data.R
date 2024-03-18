@@ -49,7 +49,7 @@ if(processCPOD){
 if(processWBAT){
   dirList <- list.files(file.path(dataPath,'WBAT'))
   
-  for(myDir in dirList){
+  for(myDir in dirList[c(32,34,36)]){
     print(myDir)
     flagFirst <- T
     fileList <- list.files(file.path(dataPath,'WBAT',myDir),pattern="*.txt")
@@ -128,37 +128,37 @@ if(processWBAT){
       }
     }
     
-    temp <- subset(WBAT.all,treshold == -50)
-    temp <- subset(temp,depth == 0)
-    
-    max(temp$datetime,na.rm=T)
-    
-    ggplot(temp,aes(x=datetime,y=log10(SA)))+
-      geom_line()
+    # temp <- subset(WBAT.all,treshold == -50)
+    # temp <- subset(temp,depth == 0)
+    # 
+    # max(temp$datetime,na.rm=T)
+    # 
+    # ggplot(temp,aes(x=datetime,y=log10(SA)))+
+    #   geom_line()
     
     save('WBAT.all',
          file = file.path(dataPath,paste0('WBAT_',myDir,'.RData')))
   } 
 }
-
-load(file.path(resultPath,'WBAT_2023-BSW_278093 BSW2_70khz.RData'))
-WBAT.join <- WBAT.all
-
-load(file.path(resultPath,'WBAT_2021-BE_P1_grafton_200khz.RData'))
-WBAT.join <- rbind(WBAT.join,WBAT.all)
-
-WBAT.join <- subset(WBAT.join,depth == 0)
-
-WBAT.summary <- WBAT.join %>% group_by(treshold,IDinter,frequency,chunk) %>% summarize(SA=mean(SA,na.rm=T),
-                                                                              datetime=first(datetime,na.rm=T),
-                                                                              depthIntegration=first(depthIntegration,na.rm=T))
-
-windows()
-ggplot(subset(WBAT.summary,treshold==-50),aes(x=datetime,y=log10(SA)))+
-  geom_line()
-
-windows()
-WBAT.join$IDinterUnique <- paste0(WBAT.join$IDinter,'_',WBAT.join$chunk)
-df.plot <- subset(WBAT.join,treshold %in% c(-50))
-ggplot(df.plot,aes(x=datetime,group=IDinterUnique))+
-  stat_summary(aes(y =log10(SA)),fun=mean, geom = "line")
+# 
+# load(file.path(resultPath,'WBAT_2023-BSW_278093 BSW2_70khz.RData'))
+# WBAT.join <- WBAT.all
+# 
+# load(file.path(resultPath,'WBAT_2021-BE_P1_grafton_200khz.RData'))
+# WBAT.join <- rbind(WBAT.join,WBAT.all)
+# 
+# WBAT.join <- subset(WBAT.join,depth == 0)
+# 
+# WBAT.summary <- WBAT.join %>% group_by(treshold,IDinter,frequency,chunk) %>% summarize(SA=mean(SA,na.rm=T),
+#                                                                               datetime=first(datetime,na.rm=T),
+#                                                                               depthIntegration=first(depthIntegration,na.rm=T))
+# 
+# windows()
+# ggplot(subset(WBAT.summary,treshold==-50),aes(x=datetime,y=log10(SA)))+
+#   geom_line()
+# 
+# windows()
+# WBAT.join$IDinterUnique <- paste0(WBAT.join$IDinter,'_',WBAT.join$chunk)
+# df.plot <- subset(WBAT.join,treshold %in% c(-50))
+# ggplot(df.plot,aes(x=datetime,group=IDinterUnique))+
+#   stat_summary(aes(y =log10(SA)),fun=mean, geom = "line")
