@@ -1,16 +1,18 @@
 format_CPOD <- function(CPOD.data){
+  
+  # ----------------------------------------
   # break down data in minutes
+  # ----------------------------------------
   dat_minute <- CPOD.data
   dat_minute$timeIci_str <- as.POSIXct(dat_minute$timeIci_str,format='%Y-%m-%d %H:%M:%S',tz='UTC')
   dat_minute$time_minute <- as.numeric(as.POSIXct(cut(dat_minute$timeIci_str, breaks = "1 min"),tz='UTC'))
   
   dat_minute <-   dat_minute %>% 
-    group_by(classication,time_minute,stationName)%>%
+    group_by(classication,time_minute,stationName,type)%>%
     summarize(  count = n(),
                 lat=first(lat),
                 lon=first(lon),
-                dataSet=first(dataSet),
-                dayNight=first(dayNight))
+                dataSet=first(dataSet))
   
   dat_minute$time_minute    <- as.POSIXct(dat_minute$time_minute,origin = "1970-01-01",tz='UTC')
   
@@ -20,7 +22,20 @@ format_CPOD <- function(CPOD.data){
   dat_minute$all          <- dat_minute$inter+dat_minute$other+dat_minute$buzz
   dat_minute$buzz_ratio   <- dat_minute$all_buzz/dat_minute$all
   
+  mySunlightTimes <- getSunlightTimes(date = as.Date(dat_minute$time_minute),
+                                      lat = unique(dat_minute$lat),
+                                      lon = unique(dat_minute$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
+  dat_minute$hourSunset    <- hour(mySunlightTimes$sunset)+minute(mySunlightTimes$sunset)/60+second(mySunlightTimes$sunset)/60/60
+  dat_minute$hourSunrise   <- hour(mySunlightTimes$sunrise)+minute(mySunlightTimes$sunrise)/60+second(mySunlightTimes$sunrise)/60/60
+  dat_minute$sunset <- mySunlightTimes$sunset
+  dat_minute$sunrise <- mySunlightTimes$sunrise
+  
+  dat_minute$dayNight <- 'night'
+  dat_minute$dayNight[(dat_minute$sunrise <= dat_minute$time_minute) & (dat_minute$time_minute <= dat_minute$sunset)] <- 'day'
+  
+  # ----------------------------------------
   # break down data in hours
+  # ----------------------------------------
   hour_seq <- seq(  from=as.POSIXct(cut(min(CPOD.data$timeIci_str),breaks='1 day'),tz='UTC'),
                     to=as.POSIXct(cut(max(CPOD.data$timeIci_str),breaks='1 day'),tz='UTC'),
                     by=60*60)
@@ -29,16 +44,14 @@ format_CPOD <- function(CPOD.data){
   dat_hour <- CPOD.data
   dat_hour$timeIci_str  <- as.POSIXct(dat_hour$timeIci_str,format='%Y-%m-%d %H:%M:%S',tz='UTC')
   dat_hour$time_hour    <- as.numeric(as.POSIXct(cut(dat_hour$timeIci_str, breaks = "1 hour"),tz='UTC'))
+  dat_hour$time_hour_num <- dat_hour$time_hour
   
   dat_hour              <-  dat_hour %>% 
-                            group_by(classication,time_hour,stationName) %>% 
+                            group_by(classication,time_hour,time_hour_num,stationName,type) %>% 
                             summarize(  count = n(),
                                         lat=first(lat),
                                         lon=first(lon),
-                                        dataSet=first(dataSet),
-                                        dayNight=first(dayNight))# %>% 
-                            #ungroup() %>%
-                            #complete(stationName,time_hour=hour_seq)
+                                        dataSet=first(dataSet))
   
   dat_hour$time_hour    <- as.POSIXct(dat_hour$time_hour,origin = "1970-01-01",tz='UTC')
   
@@ -66,7 +79,30 @@ format_CPOD <- function(CPOD.data){
                                                 na.rm = TRUE)
   }
   
+  dat_hour <- dat_hour %>% ungroup() %>%
+          complete(time_hour_num=hour_seq,fill = list(classication=NA,
+                                                  dataSet=unique(dat_hour$dataSet),
+                                                  stationName=unique(dat_hour$stationName),
+                                                  lat=unique(dat_hour$lat),
+                                                  type=unique(dat_hour$type),
+                                                  lon=unique(dat_hour$lon)))
+  dat_hour$time_hour <- as.POSIXct(dat_hour$time_hour_num,origin = "1970-01-01",tz='UTC')
+
+  
+  mySunlightTimes <- getSunlightTimes(date = as.Date(dat_hour$time_hour),
+                                      lat = unique(dat_hour$lat),
+                                      lon = unique(dat_hour$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
+  dat_hour$hourSunset    <- hour(mySunlightTimes$sunset)+minute(mySunlightTimes$sunset)/60+second(mySunlightTimes$sunset)/60/60
+  dat_hour$hourSunrise   <- hour(mySunlightTimes$sunrise)+minute(mySunlightTimes$sunrise)/60+second(mySunlightTimes$sunrise)/60/60
+  dat_hour$sunset <- mySunlightTimes$sunset
+  dat_hour$sunrise <- mySunlightTimes$sunrise
+  
+  dat_hour$dayNight <- 'night'
+  dat_hour$dayNight[(dat_hour$sunrise <= dat_hour$time_hour) & (dat_hour$time_hour <= dat_hour$sunset)] <- 'day'
+  
+  # ----------------------------------------
   # break down data in days
+  # ----------------------------------------
   day_seq <- seq(  from=as.POSIXct(cut(min(CPOD.data$timeIci_str),breaks='1 day'),tz='UTC'),
                     to=as.POSIXct(cut(max(CPOD.data$timeIci_str),breaks='1 day'),tz='UTC'),
                     by=60*60*24)
@@ -75,9 +111,10 @@ format_CPOD <- function(CPOD.data){
   dat_day <- CPOD.data
   dat_day$timeIci_str   <- as.POSIXct(dat_day$timeIci_str,format='%Y-%m-%d %H:%M:%S',tz='UTC')
   dat_day$time_day      <- as.numeric(as.POSIXct(cut(dat_day$timeIci_str, breaks = "1 day"),tz='UTC'))
+  dat_day$time_day_num <- dat_day$time_day
   
   dat_day              <-  dat_day %>% 
-                            group_by(classication,time_day,stationName) %>% 
+                            group_by(classication,time_day,time_day_num,stationName,type) %>% 
                             summarize(  count = n(),
                                         lat=first(lat),
                                         lon=first(lon),
@@ -107,6 +144,28 @@ format_CPOD <- function(CPOD.data){
                                                   dat_minute$all_buzz != 0, 
                                                 na.rm = TRUE)
   }
+  
+  dat_day <- dat_day %>% ungroup() %>%
+    complete(time_day_num=day_seq,fill = list(classication=NA,
+                                                dataSet=unique(dat_day$dataSet),
+                                                stationName=unique(dat_day$stationName),
+                                                type=unique(dat_day$type),
+                                                lat=unique(dat_day$lat),
+                                                lon=unique(dat_day$lon)))
+  dat_day$time_day <- as.POSIXct(dat_day$time_day_num,origin = "1970-01-01",tz='UTC')
+  
+  
+  mySunlightTimes <- getSunlightTimes(date = as.Date(dat_day$time_day),
+                                      lat = unique(dat_day$lat),
+                                      lon = unique(dat_day$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
+  dat_day$hourSunset    <- hour(mySunlightTimes$sunset)+minute(mySunlightTimes$sunset)/60+second(mySunlightTimes$sunset)/60/60
+  dat_day$hourSunrise   <- hour(mySunlightTimes$sunrise)+minute(mySunlightTimes$sunrise)/60+second(mySunlightTimes$sunrise)/60/60
+  dat_day$sunset <- mySunlightTimes$sunset
+  dat_day$sunrise <- mySunlightTimes$sunrise
+  
+  dat_day$dayNight <- 'night'
+  dat_day$dayNight[(dat_day$sunrise <= dat_day$time_day) & (dat_day$time_day <= dat_day$sunset)] <- 'day'
+  
   
   return(list(CPOD.data=CPOD.data,
               CPOD.hour=dat_hour,

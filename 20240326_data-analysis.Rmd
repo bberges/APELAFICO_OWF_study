@@ -1,0 +1,135 @@
+---
+title: "APELAFICO - pair design study"
+author: "Benoit Berges"
+date: "2024-03-26"
+output:
+  slidy_presentation: default
+  beamer_presentation: default
+  ioslides_presentation: default
+---
+
+```{r setup, include=FALSE}
+
+library(knitr)
+knitr::opts_chunk$set(comment = NA)
+
+rm(list=ls())
+
+library(icesTAF)
+library(pander)
+library(ggplot2)
+library(tidyverse)
+
+figurePath    <- file.path('.','figures')
+dataPath      <- file.path('.','data')
+
+overview.tab <- read.csv(file.path(dataPath,'data_overview.csv'))
+overview.tab <- subset(overview.tab,pairing != -1)
+overview.tab <- overview.tab %>% select(-c('soundtrap','CPOD','WBAT_70','WBAT_200'))
+
+```
+
+## Data set overview
+
+```{r echo=FALSE} 
+pander::pandoc.table(overview.tab,
+                     style="simple", split.tables=200, justify="right", missing=".")
+
+```
+
+## Data curration
+
+- Most WBAT data were recorded in 5 minute intervals, sequentially at 70 kHz and 200 kHz
+- Some WBAT data sets had longer span (10-15 minutes)
+- All data sets were standardized to intervals between 3.5 and 5 minutes by randomly sampling the full sampling interval
+- SA are compiled as mean SA for each interval in a given hour
+- CPOD data are sorted per hour, also with absence/presence
+
+## Comparison of fish biomass - all combined
+
+- More biomass at the "outside sites"
+- Clear diurnal patterns with higher biomass at night
+- Results are consistent at both 70 kHz and 200 kHz though the contrast between OWF and out is more pronounced at 70 kHz
+- There is clear variations between sites
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_all_OWF vs out all_70khz.png')) 
+```
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_all_OWF vs out all_200khz.png')) 
+```
+  
+## Comparison of fish biomass - comparison per pairs
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_pairing_70khz.png')) 
+```
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_pairing_200khz.png')) 
+```
+
+## HP presence and activity
+
+- HP presence is higher at the control sites
+- It is however the reverse for PPM which is higher for OWF sites
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'CPOD_HP presence_all.png')) 
+```
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'CPOD_HP PPM_all.png')) 
+```
+
+## Fish biomass vs HP presence
+
+- Surprisingly, results are inconsistent between 70 kHz and 200 kHz
+- This needs to be investigated further
+
+- @70kHz: HP presence is associated with higher biomass
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP presence_boxplot_70khz_all.png')) 
+```
+
+- @70kHz cont'd: the trend is fairly consistent between data sets
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP presence_boxplot_70khz.png')) 
+```
+
+- @200kHz: HP presence is associated with lower biomass
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP presence_boxplot_200khz_all.png')) 
+```
+
+- @200kHz cont'd: but... some sites examplify higher HP presence with higher biomass, especially at night.
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP presence_boxplot_200khz.png'))
+```
+
+## Fish biomass vs HP PPM
+
+- Possible increase of PPM with higher biomass for both 70 kHz and 200 kHz. The increase is more pronouced at 200 kHz
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP pos minutes_boxplot_70khz_all.png'))
+```
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP pos minutes_boxplot_200khz_all.png'))
+```
+
+- Plots by day/night
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP pos minutes_stats_70khz.png'))
+```
+
+```{r echo=FALSE} 
+knitr::include_graphics(file.path(figurePath,'WBAT_HP pos minutes_stats_200khz.png'))
+```

@@ -7,7 +7,7 @@ library(suncalc)
 rm(list=ls())
 
 #setwd('D:/PAM_RABO/finless_neonate_HK')
-setwd('D:/git/APELAFICO_OWF_study/')
+setwd('G:/git/APELAFICO_OWF_study/')
 #setwd('G:/git/WBAT_APELAFICO')
 
 sourceDir(file.path('.','function'))
@@ -93,6 +93,15 @@ if(processFlag){
       }
     }
     
+    samp.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n())
+
+    #dim(subset(WBAT.join,IDinter %in% subset(samp.summary,n >= sampleSize)$IDinter))
+    
+    WBAT.join <- subset(WBAT.join,IDinter %in% subset(samp.summary,n >= 6)$IDinter) %>%
+                  group_by(stationSet,treshold,IDinter,frequency,phase) %>%
+                  slice(sample(n(), min(11, n())))
+                  #sample_n(11,replace = FALSE)
+    
     # summarize WBAT data per intervals
     WBAT.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n(),
                                                                                                       station=unique(station),
@@ -173,20 +182,10 @@ if(processFlag){
       }
       
       CPOD.current$stationName  <- CPOD.current$station
+      CPOD.current$type <- unique(WBAT.summary$type)
       CPOD.current$lat <- unique(WBAT.summary$lat)
       CPOD.current$lon <- unique(WBAT.summary$lon)
 
-      mySunlightTimes <- getSunlightTimes(date = as.Date(CPOD.current$timeIci_str),
-                                          lat = unique(WBAT.summary$lat),
-                                          lon = unique(WBAT.summary$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
-      CPOD.current$hourSunset    <- hour(mySunlightTimes$sunset)+minute(mySunlightTimes$sunset)/60+second(mySunlightTimes$sunset)/60/60
-      CPOD.current$hourSunrise   <- hour(mySunlightTimes$sunrise)+minute(mySunlightTimes$sunrise)/60+second(mySunlightTimes$sunrise)/60/60
-      CPOD.current$sunset <- mySunlightTimes$sunset
-      CPOD.current$sunrise <- mySunlightTimes$sunrise
-      
-      CPOD.current$dayNight <- 'night'
-      CPOD.current$dayNight[(CPOD.current$sunrise <= CPOD.current$timeIci_str) & (CPOD.current$timeIci_str <= CPOD.current$sunset)] <- 'day'
-      
       res.CPOD <- format_CPOD(CPOD.current)
     }
   
