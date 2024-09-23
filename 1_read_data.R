@@ -5,7 +5,7 @@ library(data.table)
 rm(list=ls())
 
 #setwd('D:/PAM_RABO/finless_neonate_HK')
-setwd('Y:/APELAFICO/')
+setwd('Z:/APELAFICO/')
 #setwd('G:/git/WBAT_APELAFICO')
 
 figurePath    <- file.path('.','figures')
@@ -49,7 +49,7 @@ if(processCPOD){
 if(processWBAT){
   dirList <- list.files(file.path(dataPath,'WBAT'))
   
-  for(myDir in dirList[c(32,34,36)]){
+  for(myDir in dirList[c(43:46)]){
     print(myDir)
     flagFirst <- T
     fileList <- list.files(file.path(dataPath,'WBAT',myDir),pattern="*.txt")
@@ -105,7 +105,7 @@ if(processWBAT){
       
       # tidy up data frame
       WBAT.current <- WBAT.current[WBAT.current$NoPelagic > 0,]
-      WBAT.current <- WBAT.current %>% select(-thresh_pass,-timediff,-DATE,-TIME,-Latitude,-Longitude,-START_LOG,-Species,-Frequency,-MinDepth,-MaxDepth,-Transcei.,-Threshold,-BottomUpper,-B_CH0)
+      WBAT.current <- WBAT.current %>% dplyr::select(-thresh_pass,-timediff,-DATE,-TIME,-Latitude,-Longitude,-START_LOG,-Species,-Frequency,-MinDepth,-MaxDepth,-Transcei.,-Threshold,-BottomUpper,-B_CH0)
       idxColDepth <- str_detect(colnames(WBAT.current), 'P_CH')
       colnames(WBAT.current)[idxColDepth] <- as.numeric(sapply(strsplit(colnames(WBAT.current)[idxColDepth],'P_CH'), "[[", 2))
       WBAT.current <- WBAT.current %>% pivot_longer(!datetime & !IDinter & !STOP_LOG & !ScatterPCT & !NoPelagic,names_to = 'depth',values_to = 'SA')
