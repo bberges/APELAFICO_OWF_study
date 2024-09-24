@@ -5,7 +5,9 @@ format_CPOD <- function(CPOD.data){
   # ----------------------------------------
   dat_minute <- CPOD.data
   dat_minute$timeIci_str <- as.POSIXct(dat_minute$timeIci_str,format='%Y-%m-%d %H:%M:%S',tz='UTC')
-  dat_minute$time_minute <- as.numeric(as.POSIXct(cut(dat_minute$timeIci_str, breaks = "1 min"),tz='UTC'))
+  my.fun <- function(x) as.POSIXct(x, tz = "UTC")
+  dat_minute$time_minute    <- unlist(lapply(cut(dat_minute$timeIci_str, breaks = "1 min"),my.fun))
+  dat_minute$time_min_num <- dat_minute$time_minute
   
   dat_minute <-   dat_minute %>% 
     group_by(classication,time_minute,stationName,type)%>%
@@ -14,7 +16,7 @@ format_CPOD <- function(CPOD.data){
                 lon=first(lon),
                 dataSet=first(dataSet))
   
-  dat_minute$time_minute    <- as.POSIXct(dat_minute$time_minute,origin = "1970-01-01",tz='UTC')
+  dat_minute$time_minute    <- as.POSIXct(dat_minute$time_minute,tz='UTC')
   
   dat_minute              <- dat_minute %>% spread(classication, count,fill=0)
   dat_minute$all_buzz     <- dat_minute$buzz
@@ -43,7 +45,8 @@ format_CPOD <- function(CPOD.data){
   
   dat_hour <- CPOD.data
   dat_hour$timeIci_str  <- as.POSIXct(dat_hour$timeIci_str,format='%Y-%m-%d %H:%M:%S',tz='UTC')
-  dat_hour$time_hour    <- as.numeric(as.POSIXct(cut(dat_hour$timeIci_str, breaks = "1 hour"),tz='UTC'))
+  my.fun <- function(x) as.POSIXct(x, tz = "UTC")
+  dat_hour$time_hour    <- unlist(lapply(cut(dat_hour$timeIci_str, breaks = "1 hour"),my.fun))
   dat_hour$time_hour_num <- dat_hour$time_hour
   
   dat_hour              <-  dat_hour %>% 
@@ -53,7 +56,7 @@ format_CPOD <- function(CPOD.data){
                                         lon=first(lon),
                                         dataSet=first(dataSet))
   
-  dat_hour$time_hour    <- as.POSIXct(dat_hour$time_hour,origin = "1970-01-01",tz='UTC')
+  dat_hour$time_hour    <- as.POSIXct(dat_hour$time_hour,tz='UTC')#,origin = "1970-01-01"
   
   dat_hour              <- dat_hour %>% spread(classication, count,fill=0)
   dat_hour$all_buzz     <- dat_hour$buzz
@@ -72,6 +75,8 @@ format_CPOD <- function(CPOD.data){
     
     #between(as.POSIXct(as.character(dat_minute$time_minute)), startInter, endInter)
     
+    sum(dat_minute$time_minute >= startInter & dat_minute$time_minute < endInter, na.rm = TRUE)
+    
     dat_hour$pos_minutes[idxHour] <- sum(dat_minute$time_minute >= startInter & dat_minute$time_minute < endInter, na.rm = TRUE)
     dat_hour$buzz_pos_minutes[idxHour] <- sum(  dat_minute$time_minute >= startInter & 
                                                   dat_minute$time_minute < endInter & 
@@ -86,7 +91,9 @@ format_CPOD <- function(CPOD.data){
                                                   lat=unique(dat_hour$lat),
                                                   type=unique(dat_hour$type),
                                                   lon=unique(dat_hour$lon)))
-  dat_hour$time_hour <- as.POSIXct(dat_hour$time_hour_num,origin = "1970-01-01",tz='UTC')
+  
+  dat_hour$time_hour <- as.POSIXct(dat_hour$time_hour_num,tz='UTC')
+  #dat_hour$time_hour <- as.POSIXct(dat_hour$time_hour_num,origin = "1970-01-01",tz='UTC')
 
   
   mySunlightTimes <- getSunlightTimes(date = as.Date(dat_hour$time_hour),

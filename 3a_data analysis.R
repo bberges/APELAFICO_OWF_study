@@ -314,6 +314,8 @@ print(ggplot(CPOD.all.hour,aes(x=as.factor(pairing),y=pos_minutes,fill=as.factor
         facet_wrap(~dataSet))
 dev.off()
 
+t <- subset(CPOD.all.hour,dataSet == "2023-BE")
+
 taf.png(file.path(figurePath,paste0("CPOD_HP presence_all.png")))
 print(ggplot(CPOD.temp,aes(x=as.factor(type),y=(1-pres.ratio)*100,fill=as.factor(type)))+
         theme_bw()+

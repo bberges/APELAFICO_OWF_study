@@ -34,6 +34,10 @@ processFlag <- T
 if(processFlag){
   load(file.path(dataPath,'CPOD_all.RData'))
   
+  CPOD.all <- CPOD.all %>% separate(PODid,into=c("POD","dataSet", "station"),sep = "_")
+  CPOD.all$station[CPOD.all$station == '267878'] <- '267838'
+  CPOD.all$timeIci_str <- as.POSIXct(CPOD.all$timeIci_str,tz='UTC')
+  
   CPOD.all$dataSet_station <- paste0(CPOD.all$dataSet,'_',CPOD.all$station)
   
   WBAT.tab <- WBAT.tab[WBAT.tab$SA_exported == 1,]
@@ -103,16 +107,16 @@ if(processFlag){
                   #sample_n(11,replace = FALSE)
     
     # summarize WBAT data per intervals
-    WBAT.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n(),
-                                                                                                      station=unique(station),
-                                                                                                      dataSet=unique(dataSet),
-                                                                                                      SAsd=sd(SA,na.rm=T),
-                                                                                                      SA=mean(SA,na.rm=T),
-                                                                                                      depthSA=mean(depthSA,na.rm=T),
-                                                                                                      datetime=first(datetime),
-                                                                                                      depthIntegration=mean(depthIntegration,na.rm=T))
+    WBAT.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% 
+      summarize(n=n(),
+                station=unique(station),
+                dataSet=unique(dataSet),
+                SAsd=sd(SA,na.rm=T),
+                SA=mean(SA,na.rm=T),
+                depthSA=mean(depthSA,na.rm=T),
+                datetime=first(datetime),
+                depthIntegration=mean(depthIntegration,na.rm=T))
 
-    WBAT.summary$stationSetP  <- WBAT.summary$stationSet
     WBAT.summary$stationSet   <- paste0(WBAT.summary$dataSet,'_',WBAT.summary$station)
     
     WBAT.summary <- left_join(WBAT.summary,overview.tab,by=c('stationSet'))
