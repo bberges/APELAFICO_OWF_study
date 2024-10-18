@@ -26,6 +26,13 @@ overview.tab$pairingName <- paste0(overview.tab$dataSet,'_',overview.tab$pairing
 overview.tab <- overview.tab %>% select(-c('year','dataSet','station'))
 
 processFlag <- T
+filterSA    <- T
+
+if(filterSA){
+  saveName <- 'CPOD_WBAT_workspace.filt.RData'
+}else{
+  saveName <- 'CPOD_WBAT_workspace.RData'
+}
 
 ############################################################################
 ## Read data and plot
@@ -36,160 +43,197 @@ if(processFlag){
   
   CPOD.all <- CPOD.all %>% separate(PODid,into=c("POD","dataSet", "station"),sep = "_")
   CPOD.all$station[CPOD.all$station == '267878'] <- '267838'
+  CPOD.all <- subset(CPOD.all,timeIci_str != 'NaT')
   CPOD.all$timeIci_str <- as.POSIXct(CPOD.all$timeIci_str,tz='UTC')
-  
+
   CPOD.all$dataSet_station <- paste0(CPOD.all$dataSet,'_',CPOD.all$station)
   
   WBAT.tab <- WBAT.tab[WBAT.tab$SA_exported == 1,]
   
   flagFirst.all <- T
-  for(stationSet in unique(WBAT.tab$dataSet_station)){
+  for(stationSet in c(unique(WBAT.tab$dataSet_station),'2021-BE_cpower')){#
     print(stationSet)
     tab.filt <- WBAT.tab[WBAT.tab$dataSet_station == stationSet,]
     
-    # Read all data in the set of station+data set
-    flagFirst <- T
-    for(idxDataSet in tab.filt$surveName){
-      print(idxDataSet)
-      load(file.path(dataPath,paste0('WBAT_',idxDataSet,'.RData')))
-      
-      WBAT.all <- WBAT.all[!is.na(WBAT.all$datetime),]
-      WBAT.all$stationSet  <- paste0(WBAT.all$dataSet,'_',WBAT.all$station,'_',WBAT.all$phase)
-      WBAT.all$IDinter <- NA
-      
-      # break into intervals
-      for(idxTreshold in unique(WBAT.all$treshold)){
-        idxFilt <- WBAT.all$treshold == idxTreshold
-        WBAT.current <- WBAT.all[idxFilt,]
+    if(dim(tab.filt)[1] != 0){
+      # Read all data in the set of station+data set
+      flagFirst <- T
+      for(idxDataSet in tab.filt$surveName){
+        print(idxDataSet)
+        load(file.path(dataPath,paste0('WBAT_',idxDataSet,'.RData')))
         
-        idxOrder <- order(WBAT.current$datetime)
-        thresh <- 60*6
-        WBAT.current <- WBAT.current[idxOrder,] %>% 
-          mutate(timediff = difftime(datetime, lag(datetime), units = 'secs'))
+        WBAT.all <- WBAT.all[!is.na(WBAT.all$datetime),]
+        WBAT.all$stationSet  <- paste0(WBAT.all$dataSet,'_',WBAT.all$station,'_',WBAT.all$phase)
+        WBAT.all$IDinter <- NA
+        WBAT.all <- subset(WBAT.all,depth != 0 & SA != 0)
         
-        WBAT.current <- WBAT.current %>%
-          mutate(timediff = ifelse(is.na(timediff), 1, timediff)) %>%
-          mutate(thresh_pass = timediff > thresh,
-                 thresh_pass = as.numeric(thresh_pass)) %>%  # true = 1
-          mutate(thresh_pass = ifelse(timediff==1, 1, thresh_pass))
+        # break into intervals
+        for(idxTreshold in unique(WBAT.all$treshold)){
+          idxFilt <- WBAT.all$treshold == idxTreshold
+          WBAT.current <- WBAT.all[idxFilt,]
+          
+          idxOrder <- order(WBAT.current$datetime)
+          thresh <- 60*6
+          WBAT.current <- WBAT.current[idxOrder,] %>% 
+            mutate(timediff = difftime(datetime, lag(datetime), units = 'secs'))
+          
+          WBAT.current <- WBAT.current %>%
+            mutate(timediff = ifelse(is.na(timediff), 1, timediff)) %>%
+            mutate(thresh_pass = timediff > thresh,
+                   thresh_pass = as.numeric(thresh_pass)) %>%  # true = 1
+            mutate(thresh_pass = ifelse(timediff==1, 1, thresh_pass))
+          
+          WBAT.current$IDinter <- c(cumsum(WBAT.current$thresh_pass))
+          WBAT.current$IDinter <- paste0(WBAT.current$stationSet,'_',idxTreshold,'_',WBAT.current$frequency,'_',WBAT.current$IDinter)
+          
+          WBAT.all$IDinter[which(idxFilt)[idxOrder]] <- WBAT.current$IDinter
+          
+          upper_bound <- quantile(log10(WBAT.current$SA),0.75)#median(log10(WBAT.current$SA)) + 2 * mad(log10(WBAT.current$SA), constant = 1)
+          
+          idxIn <- log10(WBAT.current$SA) > upper_bound & log10(WBAT.current$SA) < 4.5
+          
+          if(filterSA){
+            WBAT.all <- WBAT.all[-c(which(idxFilt)[idxOrder][!idxIn]),]
+          }
+        }
         
-        WBAT.current$IDinter <- c(cumsum(WBAT.current$thresh_pass))
-        WBAT.current$IDinter <- paste0(WBAT.current$stationSet,'_',idxTreshold,'_',WBAT.current$frequency,'_',WBAT.current$IDinter)
-
-        WBAT.all$IDinter[which(idxFilt)[idxOrder]] <- WBAT.current$IDinter
+        WBAT.all.depth0 <- WBAT.all %>% select(-c(depth)) %>% group_by(STOP_LOG,ScatterPCT,NoPelagic,datetime,IDinter,
+                                                                       depthIntegration,dataSet,phase,station,frequency,treshold,
+                                                                       chunk, stationSet) %>% summarise(SA=sum(SA))
+        
+        WBAT.all.depth0$depth <- 0
+        
+        WBAT.all <- rbind(WBAT.all,WBAT.all.depth0)
+        WBAT.all <- WBAT.all %>% arrange(treshold,datetime,depth)
+        
+        WBAT.depth <- subset(WBAT.all,depth != 0) %>% group_by(IDinter,frequency,treshold,datetime) %>% summarize(depthSA=sum(SA*depth)/sum(SA))
+        WBAT.depth <- WBAT.depth[order(WBAT.depth$datetime),]
+        
+        WBAT.all <- subset(WBAT.all,depth == 0)
+        if(dim(WBAT.all)[1] != dim(WBAT.depth)[1]){
+          print('dimensions are not the same between depth and total SA objects')
+        }
+        
+        WBAT.all <- left_join(WBAT.all,WBAT.depth,by=c('IDinter','frequency','treshold','datetime'))
+        
+        if(flagFirst){
+          WBAT.join <- WBAT.all
+          flagFirst <- F
+        }else{
+          WBAT.join <- rbind(WBAT.join,WBAT.all)
+        }
       }
-
-      WBAT.depth <- subset(WBAT.all,depth != 0) %>% group_by(IDinter,frequency,treshold,datetime) %>% summarize(depthSA=sum(SA*depth)/sum(SA))
-      WBAT.depth <- WBAT.depth[order(WBAT.depth$datetime),]
       
-      WBAT.all <- subset(WBAT.all,depth == 0)
-      if(dim(WBAT.all)[1] != dim(WBAT.depth)[1]){
-        print('dimensions are not the same between depth and total SA objects')
-      }
-        
-      WBAT.all <- left_join(WBAT.all,WBAT.depth,by=c('IDinter','frequency','treshold','datetime'))
+      samp.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n())
       
-      if(flagFirst){
-        WBAT.join <- WBAT.all
-        flagFirst <- F
-      }else{
-        WBAT.join <- rbind(WBAT.join,WBAT.all)
-      }
+      #dim(subset(WBAT.join,IDinter %in% subset(samp.summary,n >= sampleSize)$IDinter))
+      
+      WBAT.join <- subset(WBAT.join,IDinter %in% subset(samp.summary,n >= 6)$IDinter) %>%
+        group_by(stationSet,treshold,IDinter,frequency,phase) %>%
+        slice(sample(n(), min(11, n())))
+      #sample_n(11,replace = FALSE)
+      
+      # summarize WBAT data per intervals
+      WBAT.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% 
+        summarize(n=n(),
+                  station=unique(station),
+                  dataSet=unique(dataSet),
+                  SAsd=sd(SA,na.rm=T),
+                  SA=mean(SA,na.rm=T),
+                  depthSA=mean(depthSA,na.rm=T),
+                  datetime=first(datetime),
+                  depthIntegration=mean(depthIntegration,na.rm=T))
+      
+      #temp <- subset(WBAT.summary,frequency == 70 & treshold == -60)
+      
+      WBAT.summary$stationSet   <- paste0(WBAT.summary$dataSet,'_',WBAT.summary$station)
+      
+      WBAT.summary <- left_join(WBAT.summary,overview.tab,by=c('stationSet'))
+      
+      
+      # samp.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n())
+      # 
+      # samplingSize <- seq(from=5,to=30,by=1)#c(3:10)
+      # nIter <- 1
+      # 
+      # flagFirstSamples <- T
+      # for(idxSampleSize in samplingSize){
+      #   for(idxIter in 1:nIter){
+      #     if(idxSampleSize <= max(samp.summary$n)){
+      #       WBAT.temp <- subset(WBAT.join,IDinter %in% subset(samp.summary,n >= idxSampleSize)$IDinter) %>% 
+      #         group_by(stationSet,treshold,IDinter,frequency,phase) %>%
+      #         sample_n(idxSampleSize) %>%
+      #         summarize(n=n(),
+      #                   station=unique(station),
+      #                   dataSet=unique(dataSet),
+      #                   SA=mean(SA,na.rm=T),
+      #                   depthSA=mean(depthSA,na.rm=T),
+      #                   datetime=first(datetime),
+      #                   depthIntegration=mean(depthIntegration,na.rm=T))
+      #       
+      #       WBAT.temp$SATotal <- WBAT.summary$SA[match(WBAT.temp$IDinter,WBAT.summary$IDinter)]
+      #       WBAT.temp$ratio   <- WBAT.temp$SA/WBAT.temp$SATotal
+      #       WBAT.temp$iter    <- idxIter
+      #       
+      #       if(flagFirstSamples){
+      #         WBAT.sample <- WBAT.temp
+      #         flagFirstSamples <- F
+      #       }else{
+      #         WBAT.sample <- rbind(WBAT.sample,WBAT.temp)
+      #       }
+      #     }
+      #   }
+      # }
+      
+      mySunlightTimes <- getSunlightTimes(date = as.Date(WBAT.summary$datetime),
+                                          lat = unique(WBAT.summary$lat),
+                                          lon = unique(WBAT.summary$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
+      WBAT.summary$hourSunset    <- hour(mySunlightTimes$sunset)+minute(mySunlightTimes$sunset)/60+second(mySunlightTimes$sunset)/60/60
+      WBAT.summary$hourSunrise   <- hour(mySunlightTimes$sunrise)+minute(mySunlightTimes$sunrise)/60+second(mySunlightTimes$sunrise)/60/60
+      WBAT.summary$sunset <- mySunlightTimes$sunset
+      WBAT.summary$sunrise <- mySunlightTimes$sunrise
+      
+      WBAT.summary$dayNight <- 'night'
+      WBAT.summary$dayNight[(WBAT.summary$sunrise <= WBAT.summary$datetime) & (WBAT.summary$datetime <= WBAT.summary$sunset)] <- 'day'
     }
     
-    samp.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n())
-
-    #dim(subset(WBAT.join,IDinter %in% subset(samp.summary,n >= sampleSize)$IDinter))
-    
-    WBAT.join <- subset(WBAT.join,IDinter %in% subset(samp.summary,n >= 6)$IDinter) %>%
-                  group_by(stationSet,treshold,IDinter,frequency,phase) %>%
-                  slice(sample(n(), min(11, n())))
-                  #sample_n(11,replace = FALSE)
-    
-    # summarize WBAT data per intervals
-    WBAT.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% 
-      summarize(n=n(),
-                station=unique(station),
-                dataSet=unique(dataSet),
-                SAsd=sd(SA,na.rm=T),
-                SA=mean(SA,na.rm=T),
-                depthSA=mean(depthSA,na.rm=T),
-                datetime=first(datetime),
-                depthIntegration=mean(depthIntegration,na.rm=T))
-
-    WBAT.summary$stationSet   <- paste0(WBAT.summary$dataSet,'_',WBAT.summary$station)
-    
-    WBAT.summary <- left_join(WBAT.summary,overview.tab,by=c('stationSet'))
-    
-    
-    # samp.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n())
-    # 
-    # samplingSize <- seq(from=5,to=30,by=1)#c(3:10)
-    # nIter <- 1
-    # 
-    # flagFirstSamples <- T
-    # for(idxSampleSize in samplingSize){
-    #   for(idxIter in 1:nIter){
-    #     if(idxSampleSize <= max(samp.summary$n)){
-    #       WBAT.temp <- subset(WBAT.join,IDinter %in% subset(samp.summary,n >= idxSampleSize)$IDinter) %>% 
-    #         group_by(stationSet,treshold,IDinter,frequency,phase) %>%
-    #         sample_n(idxSampleSize) %>%
-    #         summarize(n=n(),
-    #                   station=unique(station),
-    #                   dataSet=unique(dataSet),
-    #                   SA=mean(SA,na.rm=T),
-    #                   depthSA=mean(depthSA,na.rm=T),
-    #                   datetime=first(datetime),
-    #                   depthIntegration=mean(depthIntegration,na.rm=T))
-    #       
-    #       WBAT.temp$SATotal <- WBAT.summary$SA[match(WBAT.temp$IDinter,WBAT.summary$IDinter)]
-    #       WBAT.temp$ratio   <- WBAT.temp$SA/WBAT.temp$SATotal
-    #       WBAT.temp$iter    <- idxIter
-    #       
-    #       if(flagFirstSamples){
-    #         WBAT.sample <- WBAT.temp
-    #         flagFirstSamples <- F
-    #       }else{
-    #         WBAT.sample <- rbind(WBAT.sample,WBAT.temp)
-    #       }
-    #     }
-    #   }
-    # }
-    
-    mySunlightTimes <- getSunlightTimes(date = as.Date(WBAT.summary$datetime),
-                                        lat = unique(WBAT.summary$lat),
-                                        lon = unique(WBAT.summary$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
-    WBAT.summary$hourSunset    <- hour(mySunlightTimes$sunset)+minute(mySunlightTimes$sunset)/60+second(mySunlightTimes$sunset)/60/60
-    WBAT.summary$hourSunrise   <- hour(mySunlightTimes$sunrise)+minute(mySunlightTimes$sunrise)/60+second(mySunlightTimes$sunrise)/60/60
-    WBAT.summary$sunset <- mySunlightTimes$sunset
-    WBAT.summary$sunrise <- mySunlightTimes$sunrise
-    
-    WBAT.summary$dayNight <- 'night'
-    WBAT.summary$dayNight[(WBAT.summary$sunrise <= WBAT.summary$datetime) & (WBAT.summary$datetime <= WBAT.summary$sunset)] <- 'day'
-    
     # exception for HKZ and HKN data sets that don't have CPOD data
-    if(!(unique(WBAT.summary$dataSet) %in% c('2022-HKZ','2023-HKN'))){
+    if(dim(tab.filt)[1] != 0){
+      if(!(unique(WBAT.summary$dataSet) %in% c('2022-HKZ','2023-HKN'))){
+        CPOD.stationSet <- strsplit(stationSet,' ')[[1]][1]
+        # summarize CPOD
+        CPOD.current <- subset(CPOD.all,dataSet_station == CPOD.stationSet)
+        if(CPOD.stationSet == "2023-BSW_274174"){
+          CPOD.current$stationSet <- "2023-BSW_274174 BSW1"
+        }
+        if(CPOD.stationSet == "2023-BSW_278093"){
+          CPOD.current$stationSet <- "2023-BSW_278093 BSW2"
+        }
+        if(CPOD.stationSet == "2023-BSW_267814"){
+          CPOD.current$stationSet <- "2023-BSW_267814 BSW3"
+        }
+        if(CPOD.stationSet == "2023-BSW_267838"){
+          CPOD.current$stationSet <- "2023-BSW_267838 BSW4"
+        }
+        
+        CPOD.current$stationName  <- CPOD.current$station
+        CPOD.current$type <- unique(WBAT.summary$type)
+        CPOD.current$lat <- unique(WBAT.summary$lat)
+        CPOD.current$lon <- unique(WBAT.summary$lon)
+  
+        res.CPOD <- format_CPOD(CPOD.current)
+      }
+    }else{
       CPOD.stationSet <- strsplit(stationSet,' ')[[1]][1]
-      # summarize CPOD
       CPOD.current <- subset(CPOD.all,dataSet_station == CPOD.stationSet)
-      if(CPOD.stationSet == "2023-BSW_274174"){
-        CPOD.current$stationSet <- "2023-BSW_274174 BSW1"
-      }
-      if(CPOD.stationSet == "2023-BSW_278093"){
-        CPOD.current$stationSet <- "2023-BSW_278093 BSW2"
-      }
-      if(CPOD.stationSet == "2023-BSW_267814"){
-        CPOD.current$stationSet <- "2023-BSW_267814 BSW3"
-      }
-      if(CPOD.stationSet == "2023-BSW_267838"){
-        CPOD.current$stationSet <- "2023-BSW_267838 BSW4"
-      }
+      
+      tab.filt <- overview.tab[overview.tab$stationSet == CPOD.stationSet,]
       
       CPOD.current$stationName  <- CPOD.current$station
-      CPOD.current$type <- unique(WBAT.summary$type)
-      CPOD.current$lat <- unique(WBAT.summary$lat)
-      CPOD.current$lon <- unique(WBAT.summary$lon)
-
+      CPOD.current$type <- unique(tab.filt$type)
+      CPOD.current$lat <- unique(tab.filt$lat)
+      CPOD.current$lon <- unique(tab.filt$lon)
+      
       res.CPOD <- format_CPOD(CPOD.current)
     }
   
@@ -199,7 +243,9 @@ if(processFlag){
         CPOD.all.hour <- res.CPOD$CPOD.hour
         CPOD.all.min <- res.CPOD$CPOD.minute
       }
-      WBAT.all.summary  <- WBAT.summary
+      if(dim(tab.filt)[1] != 0){
+        WBAT.all.summary  <- WBAT.summary
+      }
       # WBAT.sample.all   <- WBAT.sample
       flagFirst.all <- F
     }else{
@@ -208,7 +254,9 @@ if(processFlag){
         CPOD.all.hour <- rbind(CPOD.all.hour,res.CPOD$CPOD.hour)
         CPOD.all.min <- rbind(CPOD.all.min,res.CPOD$CPOD.minute)
       }
-      WBAT.all.summary <- rbind(WBAT.all.summary,WBAT.summary)
+      if(dim(tab.filt)[1] != 0){
+        WBAT.all.summary <- rbind(WBAT.all.summary,WBAT.summary)
+      }
       # WBAT.sample.all  <- rbind(WBAT.sample.all,WBAT.sample)
     }
   
@@ -237,12 +285,22 @@ if(processFlag){
     #           ggtitle(paste0('buzz pos min - ',stationSet)))
     # }
   }
-
+  
   save(WBAT.all.summary,CPOD.all.day,CPOD.all.hour,CPOD.all.min,#WBAT.sample.all
-       file = file.path(resultPath,'CPOD_WBAT_workspace.RData'))
+       file = file.path(resultPath,saveName))
 }else{
-  load(file = file.path(dataPath,'CPOD_WBAT_workspace.RData'))
+  load(file = file.path(dataPath,saveName))
 }
+
+temp <- subset(WBAT.all.summary,dataSet == '2021-BE' & pairing == 1 & treshold == -50 & frequency == 70)
+unique(as.Date(temp$datetime[4881]))
+
+windows()
+ggplot(temp,aes(x=as.Date(datetime),y=log10(SA)))+
+  stat_summary(fun.data=mean_se, geom="pointrange", na.rm = TRUE)+
+  scale_x_date(date_breaks = "1 day", date_labels =  "%d %b %Y")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  facet_grid(pairing~dataSet,scales='free_x')
 
 ############################################################################
 # SA over different intervals

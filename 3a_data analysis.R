@@ -3,6 +3,8 @@ library(tidyverse)
 library(lubridate)
 library(icesTAF)
 library(timetk)
+library(RColorBrewer)
+library(gridExtra)
 
 rm(list=ls())
 
@@ -26,9 +28,8 @@ overview.tab$pairingName <- paste0(overview.tab$dataSet,'_',overview.tab$pairing
 overview.tab <- overview.tab %>% select(-c('year','dataSet','station'))
 
 
-load(file = file.path(resultPath,'CPOD_WBAT_workspace.RData'))
-
-
+#load(file = file.path(resultPath,'CPOD_WBAT_workspace.RData'))
+load(file = file.path(resultPath,'CPOD_WBAT_workspace.filt.RData'))
 
 # adjust CPOD data frames (should be done at data generation...)
 CPOD.all.day$station <- CPOD.all.day$stationName
@@ -69,10 +70,11 @@ WBAT.all.summary <- WBAT.all.summary %>% group_by(frequency,station,phase,dataSe
 #   geom_line()+
 #   geom_hline(yintercept = 1)
 
-WBAT.pairwise <- subset(WBAT.all.summary,pairing != -1 & n >= 8 & depthMaxR > 0.25 & treshold == -50)#& frequency == 70 
-WBAT.pairwise <- subset(WBAT.pairwise,!(pairing == 1 &  dataSet == "2021-BE" & datetime < as.POSIXct("2021-08-17 00:00:00 UTC",tz='UTC')))
+WBAT.pairwise <- subset(WBAT.all.summary,pairing != -1 & n >= 8 & depthMaxR > 0.25 & treshold == -60)#& frequency == 70 
+#WBAT.pairwise <- subset(WBAT.pairwise,!(pairing == 1 &  dataSet == "2021-BE" & datetime < as.POSIXct("2021-08-17 00:00:00 UTC",tz='UTC')))
 WBAT.pairwise$type <- factor(WBAT.pairwise$type,levels = c("OWF","control"))
 WBAT.pairwise$time_hour <- as.POSIXct(cut(WBAT.pairwise$datetime, breaks = "1 hour"),tz='UTC')
+WBAT.pairwise$dataSet <- factor(WBAT.pairwise$dataSet,levels = c('2021-BE','2023-BSW','2023-BE','2024-BE'))
 
 # CPOD.all.min$type <- factor(CPOD.all.min$type,levels = c("OWF","out","wreck"))
 # CPOD.all.hour$type <- factor(CPOD.all.hour$type,levels = c("OWF","out","wreck"))
@@ -82,9 +84,66 @@ CPOD.all.min$type <- CPOD.all.min$type.y
 CPOD.all.hour$type <- CPOD.all.hour$type.y
 CPOD.all.day$type <- CPOD.all.day$type.y
 
-CPOD.all.hour$time_hour <- as.POSIXct(cut(CPOD.all.hour$time_hour, breaks = "1 hour"),tz='UTC')
+#CPOD.all.hour$time_hour <- as.POSIXct(cut(CPOD.all.hour$time_hour, breaks = "1 hour"),tz='UTC')
+CPOD.all.hour$dataSet <- factor(CPOD.all.hour$dataSet,levels = c('2021-BE','2023-BSW','2023-BE','2024-BE'))
 
-library(RColorBrewer)
+############################################################################
+# time series
+############################################################################
+
+p <- ggplot(subset(WBAT.pairwise,frequency == 70),aes(x=as.Date(time_hour),y=log10(SA),col=type))+
+      theme_bw()+
+      stat_summary(fun.data=mean_se, geom="pointrange", na.rm = TRUE,size=0.1,alpha=0.5)+
+      scale_x_date(date_breaks = "1 week", date_labels =  "%d %b %Y")+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+            legend.position="bottom")+
+      xlab('Date')+
+      ggtitle('70 kHz')+
+      facet_grid(pairing~dataSet,scales='free_x')
+
+ggsave(file.path(figurePath,paste0('WBAT_TS_70khz.png')),
+       p,
+       width = 170,
+       height = 170,
+       units = c("mm"),
+       dpi = 300)
+
+p <- ggplot(subset(WBAT.pairwise,frequency == 200),aes(x=as.Date(time_hour),y=log10(SA),col=type))+
+      theme_bw()+
+      stat_summary(fun.data=mean_se, geom="pointrange", na.rm = TRUE,size=0.1,alpha=0.5)+
+      scale_x_date(date_breaks = "1 week", date_labels =  "%d %b %Y")+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+            legend.position="bottom")+
+      xlab('Date')+
+      ggtitle('200 kHz')+
+      facet_grid(pairing~dataSet,scales='free_x')
+
+ggsave(file.path(figurePath,paste0('WBAT_TS_200khz.png')),
+       p,
+       width = 170,
+       height = 170,
+       units = c("mm"),
+       dpi = 300)
+
+p <- ggplot(CPOD.all.hour,aes(x=as.Date(time_hour),y=pos_minutes,col=type))+
+      theme_bw()+
+      stat_summary(fun.data=mean_se, geom="pointrange", na.rm = TRUE,size=0.1,alpha=0.5)+
+      scale_x_date(date_breaks = "1 week", date_labels =  "%d %b %Y")+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+            legend.position="bottom")+
+      xlab('Date')+
+      ylab('Hour positive minutes')+
+      ggtitle('CPOD harbor porpoise')+
+      facet_grid(pairing~dataSet,scales='free_x')
+
+ggsave(file.path(figurePath,paste0('CPOD_TS.png')),
+       p,
+       width = 170,
+       height = 170,
+       units = c("mm"),
+       dpi = 300)
+
+
 
 ############################################################################
 # pairwise comparison
@@ -93,7 +152,8 @@ library(RColorBrewer)
 
 # by type and pairing
 taf.png(file.path(figurePath,paste0("WBAT_pairing_70khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.factor(pairing),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -60),aes(x=as.factor(pairing),y=log10(SA),fill=as.factor(type)))+
+        theme_bw()+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -106,7 +166,8 @@ print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.fa
 dev.off()
 
 taf.png(file.path(figurePath,paste0("WBAT_pairing_200khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -50),aes(x=as.factor(pairing),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -60),aes(x=as.factor(pairing),y=log10(SA),fill=as.factor(type)))+
+        theme_bw()+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -120,7 +181,8 @@ dev.off()
 
 # by type
 taf.png(file.path(figurePath,paste0("WBAT_OWF vs out per data set_70khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -60),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+        theme_bw()+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -133,7 +195,8 @@ print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.fa
 dev.off()
 
 taf.png(file.path(figurePath,paste0("WBAT_OWF vs out per data set_200khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -50),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -60),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+        theme_bw()+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -147,7 +210,8 @@ dev.off()
 
 # all
 taf.png(file.path(figurePath,paste0("WBAT_all_OWF vs out all_dayNight_70khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.factor(dayNight),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -60),aes(x=as.factor(dayNight),y=log10(SA),fill=as.factor(type)))+
+        theme_bw()+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -159,7 +223,8 @@ print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.fa
 dev.off()
 
 taf.png(file.path(figurePath,paste0("WBAT_all_OWF vs out all_70khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -60),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+        theme_bw()+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -171,7 +236,7 @@ print(ggplot(subset(WBAT.pairwise,frequency == 70 & treshold == -50),aes(x=as.fa
 dev.off()
 
 taf.png(file.path(figurePath,paste0("WBAT_all_OWF vs out all_dayNight_200khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -50),aes(x=as.factor(dayNight),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -60),aes(x=as.factor(dayNight),y=log10(SA),fill=as.factor(type)))+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -183,7 +248,7 @@ print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -50),aes(x=as.f
 dev.off()
 
 taf.png(file.path(figurePath,paste0("WBAT_all_OWF vs out all_200khz.png")))
-print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -50),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
+print(ggplot(subset(WBAT.pairwise,frequency == 200 & treshold == -60),aes(x=as.factor(type),y=log10(SA),fill=as.factor(type)))+
         geom_boxplot(position="dodge",width=0.5)+
         theme_bw()+
         ylim(0.5,3)+
@@ -286,7 +351,9 @@ df.all <- df.all %>% mutate(bin = cut(pos_minutes, breaks = h1$breaks, labels = 
 
 CPOD.all.hour$time_day <- as.POSIXct(cut(CPOD.all.hour$time_hour, breaks = "1 day"),tz='UTC')
 
-CPOD.temp <- CPOD.all.hour %>% group_by(time_day,stationName,dataSet,type,pairing) %>% summarize(pres.ratio=length(which(is.na(all)))/n())
+CPOD.temp <- CPOD.all.hour %>% 
+            group_by(time_day,stationName,dataSet,type,pairing) %>% 
+            summarize(pres.ratio=length(which(is.na(all)))/n())
 
 # ggplot(CPOD.all.day,aes(x=as.factor(type),y=pos_minutes))+
 #   geom_boxplot()
