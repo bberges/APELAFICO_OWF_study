@@ -1,0 +1,171 @@
+library(tidyverse)
+library(lubridate)
+library(data.table)
+library(suncalc)
+
+rm(list=ls())
+
+#setwd('D:/PAM_RABO/finless_neonate_HK')
+setwd('G:/git/APELAFICO_OWF_study/')
+#setwd('G:/git/WBAT_APELAFICO')
+
+figurePath    <- file.path('.','figures')
+dataPath      <- file.path('.','data')
+resultPath    <- file.path('.','results')
+
+############################################################################
+## reading annotated data sets
+############################################################################
+
+processFiles <- F
+if(processFiles){
+  fileList <- list.files(file.path(dataPath,'2022-cpower_annot'),pattern = "\\.txt$")
+  
+  flagFirst <- T
+  for(file in fileList){
+    print(file)
+    temp.list   <- strsplit(strsplit(file,'.txt')[[1]],'_')[[1]]
+    if(length(temp.list) == 6){
+      dataSet <- temp.list[1]
+      phase   <- 'P1'
+      station <- temp.list[3]
+      treshold    <- as.numeric(strsplit(temp.list[5],'=')[[1]][2])
+      frequency   <- as.numeric(strsplit(temp.list[4],'khz')[[1]][1])
+      chunk       <- as.numeric(strsplit(temp.list[6],'=')[[1]][2]) 
+    }
+    
+    WBAT.current              <- fread(file.path(dataPath,'2022-cpower_annot',file),skip="DATE")
+    
+    # fix of time strings  
+    n.char <- apply(WBAT.current[,'TIME'],1,nchar)
+    WBAT.current$TIME[n.char == 7] <- paste0('0',WBAT.current$TIME[n.char == 7])
+    WBAT.current$TIME[n.char == 5] <- paste0('000',WBAT.current$TIME[n.char == 5])
+    WBAT.current$TIME[n.char == 4] <- paste0('0000',WBAT.current$TIME[n.char == 4])
+    
+    WBAT.current$datetime <- as.POSIXct(paste0(WBAT.current$DATE,'T',WBAT.current$TIME),format="%Y%m%dT%H%M%S",tz="UTC")
+    
+    # break into intervals
+    thresh <- 60*5
+    WBAT.current <- WBAT.current %>% 
+      arrange(datetime) %>%
+      mutate(timediff = difftime(datetime, lag(datetime), units = 'secs'))
+    
+    WBAT.current <- WBAT.current %>%
+      mutate(timediff = ifelse(is.na(timediff), 1, timediff)) %>%
+      mutate(thresh_pass = timediff > thresh,
+             thresh_pass = as.numeric(thresh_pass)) %>%  # true = 1
+      mutate(thresh_pass = ifelse(timediff==1, 1, thresh_pass))
+    
+    WBAT.current$IDinter <- c(cumsum(WBAT.current$thresh_pass))
+    
+    # tidy up data frame
+    WBAT.current <- WBAT.current[WBAT.current$NoPelagic > 0,]
+    WBAT.current <- WBAT.current %>% dplyr::select(-thresh_pass,-timediff,-DATE,-TIME,-Latitude,-Longitude,-START_LOG,-Species,-Frequency,-MinDepth,-MaxDepth,-Transcei.,-Threshold,-BottomUpper,-B_CH0)
+    idxColDepth <- str_detect(colnames(WBAT.current), 'P_CH')
+    colnames(WBAT.current)[idxColDepth] <- as.numeric(sapply(strsplit(colnames(WBAT.current)[idxColDepth],'P_CH'), "[[", 2))
+    WBAT.current <- WBAT.current %>% pivot_longer(!datetime & !IDinter & !STOP_LOG & !ScatterPCT & !NoPelagic,names_to = 'depth',values_to = 'SA')
+    WBAT.current$depth <- as.numeric(WBAT.current$depth)*WBAT.current$ScatterPCT
+    WBAT.current$depthIntegration <- WBAT.current$NoPelagic*WBAT.current$ScatterPCT
+    WBAT.current <- WBAT.current[WBAT.current$SA != -1,]
+    
+    WBAT.current$dataSet  <- dataSet
+    WBAT.current$phase    <- phase
+    WBAT.current$station  <- station
+    WBAT.current$frequency  <- frequency
+    WBAT.current$treshold   <- treshold
+    WBAT.current$chunk      <- chunk
+    
+    if(flagFirst){
+      WBAT.annot <- WBAT.current
+      flagFirst <- F
+    }else{
+      WBAT.annot <- rbind(WBAT.annot,WBAT.current)
+    }
+  }
+  
+  save('WBAT.annot',
+       file = file.path(dataPath,'2022-cpower_annot',paste0('WBAT_2022-cpower-annot.RData')))
+  
+  WBAT.annot$dataSet_station <- paste0(WBAT.annot$dataSet,'_',WBAT.annot$station)
+  WBAT.annot$surveName <- paste0(WBAT.annot$dataSet_station,'_',WBAT.annot$frequency,'khz')
+
+  # combine data sets
+  flagFirst <- T
+  for(stationSet in unique(WBAT.annot$dataSet_station)){
+    print(stationSet)
+    surveNameUnique <- unique(WBAT.annot[WBAT.annot$dataSet_station == stationSet,]$surveName)
+    
+    for(idxDataSet in surveNameUnique){
+      load(file.path(dataPath,paste0('WBAT_',idxDataSet,'.RData')))
+      
+      WBAT.all$dataSet_station <- paste0(WBAT.all$dataSet,'_',WBAT.all$station)
+      WBAT.all$surveName <- paste0(WBAT.all$dataSet_station,'_',WBAT.all$frequency,'khz')
+      WBAT.all <- subset(WBAT.all,treshold == -60)
+      
+      
+      
+      if(flagFirst){
+        WBAT.comp <- rbind(WBAT.annot,WBAT.all)
+        flagFirst <- F
+      }else{
+        WBAT.comp <- rbind(WBAT.comp,WBAT.all)
+      }
+    }
+  }
+  
+  save('WBAT.comp',
+       file = file.path(dataPath,'2022-cpower_annot',paste0('WBAT_2022-cpower-comp.RData')))
+}else{
+  load(file = file.path(dataPath,'2022-cpower_annot',paste0('WBAT_2022-cpower-comp.RData')))
+}
+
+WBAT.comp$filt <- NA
+WBAT.comp$filt[WBAT.comp$treshold == 1] <- 1
+WBAT.comp$comp <- NA
+WBAT.comp$comp[WBAT.comp$treshold == 1] <- 'ref'
+
+# compare results with filtering
+for(idxDataSet in unique(WBAT.comp$surveName)){
+  print(idxDataSet)
+  idxFilt <- WBAT.comp$surveName == idxDataSet & WBAT.comp$treshold == -60
+  WBAT.current <- WBAT.comp[idxFilt,]
+  
+  idxAnnot <- WBAT.comp$surveName == idxDataSet & WBAT.comp$treshold == 1
+  minDate <- min(WBAT.comp[idxAnnot,]$datetime)
+  maxDate <- max(WBAT.comp[idxAnnot,]$datetime)
+
+  upper_bound <- quantile(log10(WBAT.current$SA),0.75)#median(log10(WBAT.current$SA)) + 2 * mad(log10(WBAT.current$SA), constant = 1)
+  
+  idxIn <- log10(WBAT.current$SA) > upper_bound
+  
+  idxFiltDate <- WBAT.current$datetime > minDate & WBAT.current$datetime < maxDate
+  
+  WBAT.comp$filt[which(idxFilt)[!idxIn]] <- -1
+  WBAT.comp$filt[which(idxFilt)[idxIn]] <- 1
+  
+  WBAT.comp$comp[which(idxFilt)[!idxFiltDate]] <- 'out'
+  WBAT.comp$comp[which(idxFilt)[idxFiltDate]] <- 'in'
+}
+
+idxOrder <- order(WBAT.comp$datetime)
+thresh <- 60*6
+WBAT.comp <- WBAT.comp[idxOrder,] %>% 
+  mutate(timediff = difftime(datetime, lag(datetime), units = 'secs'))
+
+WBAT.comp <- WBAT.comp %>%
+  mutate(timediff = ifelse(is.na(timediff), 1, timediff)) %>%
+  mutate(thresh_pass = timediff > thresh,
+         thresh_pass = as.numeric(thresh_pass)) %>%  # true = 1
+  mutate(thresh_pass = ifelse(timediff==1, 1, thresh_pass))
+
+WBAT.comp$IDinter <- c(cumsum(WBAT.comp$thresh_pass))
+#WBAT.comp$IDinterTag <- paste0(WBAT.comp$dataSet_station,'_',WBAT.comp$treshold,'_',WBAT.comp$frequency,'_',WBAT.current$IDinter)
+
+windows()
+ggplot(subset(WBAT.comp,comp %in% c('in','ref') & filt == 1 & depth != 0),aes(x=as.factor(treshold),y=log10(SA)))+# & log10(SA) > 0
+  geom_boxplot()+
+  facet_grid(station~frequency)
+
+
+subset(WBAT.comp,comp %in% c('in','ref') & filt == 1 & depth != 0 & SA != 0) %>% group_by(surveName,comp) %>% summarize(SA=mean(log10(SA)))
+
