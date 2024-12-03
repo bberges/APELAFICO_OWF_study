@@ -1,6 +1,9 @@
-library(tidyverse)
-library(lubridate)
-library(data.table)
+################################################################################
+## Script functionality: Pre-processing the RAW data gained from the CPOD's and Echosounders
+################################################################################
+
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, lubridate, data.table)
 
 rm(list=ls())
 
@@ -140,7 +143,11 @@ if(processWBAT){
          file = file.path(dataPath,paste0('WBAT_',myDir,'.RData')))
   } 
 }
-# 
+
+################################################################################
+# Some controles and first plots 
+################################################################################
+
 # load(file.path(resultPath,'WBAT_2023-BSW_278093 BSW2_70khz.RData'))
 # WBAT.join <- WBAT.all
 # 
@@ -149,9 +156,11 @@ if(processWBAT){
 # 
 # WBAT.join <- subset(WBAT.join,depth == 0)
 # 
-# WBAT.summary <- WBAT.join %>% group_by(treshold,IDinter,frequency,chunk) %>% summarize(SA=mean(SA,na.rm=T),
-#                                                                               datetime=first(datetime,na.rm=T),
-#                                                                               depthIntegration=first(depthIntegration,na.rm=T))
+# WBAT.summary <- WBAT.join %>% 
+#   group_by(treshold,IDinter,frequency,chunk) %>% 
+#   summarize(SA=mean(SA,na.rm=T),
+#             datetime=first(datetime,na.rm=T),
+#             depthIntegration=first(depthIntegration,na.rm=T))
 # 
 # windows()
 # ggplot(subset(WBAT.summary,treshold==-50),aes(x=datetime,y=log10(SA)))+
