@@ -1,14 +1,16 @@
-library(ggplot2)
-library(tidyverse)
-library(lubridate)
-library(icesTAF)
-library(suncalc)
+############################################################################
+## Script functionality: Creating a working environment for the data analysis of SA and CPOD
+############################################################################
+
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, lubridate, icesTAF, suncalc)
 
 rm(list=ls())
 
-#setwd('D:/PAM_RABO/finless_neonate_HK')
-setwd('G:/git/APELAFICO_OWF_study/')
-#setwd('G:/git/WBAT_APELAFICO')
+# setwd('D:/PAM_RABO/finless_neonate_HK')
+# setwd('G:/git/APELAFICO_OWF_study/')
+# setwd('G:/git/WBAT_APELAFICO')
+getwd()
 
 sourceDir(file.path('.','function'))
 
@@ -16,17 +18,24 @@ figurePath    <- file.path('.','figures')
 dataPath      <- file.path('.','data')
 resultPath    <- file.path('.','results')
 
-WBAT.tab <- read.csv(file.path(dataPath,'survey_db.csv'))
-WBAT.tab <- WBAT.tab[,c(1:5,8,9)]
-WBAT.tab$dataSet_station <- paste0(WBAT.tab$dataSet,'_',WBAT.tab$station)
+# Loading the META data
+WBAT.tab <- file.path(dataPath, 'survey_db.csv') %>%                            # Creating WBAT.tab from survey_db.csv
+  read_csv() %>%
+  select(1:5, 8, 9) %>%
+  mutate(dataSet_station = str_c(dataSet, '_', station))
 
-overview.tab <- read.csv(file.path(dataPath,'data_overview.csv'))
-overview.tab$stationSet <- paste0(overview.tab$dataSet,'_',overview.tab$station)
-overview.tab$pairingName <- paste0(overview.tab$dataSet,'_',overview.tab$pairing)
-overview.tab <- overview.tab %>% select(-c('year','dataSet','station'))
+overview.tab <- file.path(dataPath, 'data_overview.csv') %>%                    # Creating overview.tab from data_overview.csv
+  read_csv() %>% 
+  mutate(stationSet = str_c(dataSet, '_', station),
+         pairingName = str_c(dataSet, '_', pairing)) %>% 
+  select(-c('year', 'dataSet', 'station'))
 
 processFlag <- T
-filterSA    <- T
+filterSA    <- F
+
+############################################################################
+## Filtering or not (filtering is also commented out in the code, line 106-107)
+############################################################################
 
 if(filterSA){
   saveName <- 'CPOD_WBAT_workspace.filt.RData'
@@ -43,7 +52,7 @@ if(processFlag){
   
   CPOD.all <- CPOD.all %>% separate(PODid,into=c("POD","dataSet", "station"),sep = "_")
   CPOD.all$station[CPOD.all$station == '267878'] <- '267838'
-  CPOD.all <- subset(CPOD.all,timeIci_str != 'NaT')
+  CPOD.all <- subset(CPOD.all,timeIci_str != 'NaT')                             # I think this fixes the earlier issue I had with the CPOD data
   CPOD.all$timeIci_str <- as.POSIXct(CPOD.all$timeIci_str,tz='UTC')
 
   CPOD.all$dataSet_station <- paste0(CPOD.all$dataSet,'_',CPOD.all$station)
@@ -51,7 +60,12 @@ if(processFlag){
   WBAT.tab <- WBAT.tab[WBAT.tab$SA_exported == 1,]
   
   flagFirst.all <- T
-  for(stationSet in c(unique(WBAT.tab$dataSet_station),'2021-BE_cpower')){#
+  for(stationSet in c(unique(WBAT.tab$dataSet_station))){                       # Loop that will do everything for each unique dataSet_station that does also occur in overview.tab
+    
+    if (grepl('2022-cpower|2022-HKZ|2023-HKN', stationSet)) {
+      next                                                                      # Skipping the unneeded data sets
+    } 
+    
     print(stationSet)
     tab.filt <- WBAT.tab[WBAT.tab$dataSet_station == stationSet,]
     
@@ -88,18 +102,20 @@ if(processFlag){
           
           WBAT.all$IDinter[which(idxFilt)[idxOrder]] <- WBAT.current$IDinter
           
-          upper_bound <- quantile(log10(WBAT.current$SA),0.75)#median(log10(WBAT.current$SA)) + 2 * mad(log10(WBAT.current$SA), constant = 1)
-          
-          idxIn <- log10(WBAT.current$SA) > upper_bound & log10(WBAT.current$SA) < 4.5
+          # Commenting out the filtering step (this is as an additional security in case if the filterSA flag is not working correctly)
+          # upper_bound <- quantile(log10(WBAT.current$SA),0.75) #median(log10(WBAT.current$SA)) + 2 * mad(log10(WBAT.current$SA), constant = 1)
+          # idxIn <- log10(WBAT.current$SA) > upper_bound & log10(WBAT.current$SA) < 4.5
           
           if(filterSA){
             WBAT.all <- WBAT.all[-c(which(idxFilt)[idxOrder][!idxIn]),]
           }
         }
         
-        WBAT.all.depth0 <- WBAT.all %>% select(-c(depth)) %>% group_by(STOP_LOG,ScatterPCT,NoPelagic,datetime,IDinter,
-                                                                       depthIntegration,dataSet,phase,station,frequency,treshold,
-                                                                       chunk, stationSet) %>% summarise(SA=sum(SA))
+        WBAT.all.depth0 <- WBAT.all %>% 
+          select(-c(depth)) %>% 
+          group_by(STOP_LOG,ScatterPCT,NoPelagic,datetime,IDinter,
+                   depthIntegration,dataSet,phase,station,frequency,treshold,
+                   chunk, stationSet) %>% summarise(SA=sum(SA))
         
         WBAT.all.depth0$depth <- 0
         
@@ -116,7 +132,7 @@ if(processFlag){
         
         WBAT.all <- left_join(WBAT.all,WBAT.depth,by=c('IDinter','frequency','treshold','datetime'))
         
-        if(flagFirst){
+        if(flagFirst){                                                          # Combining the current loop with all the loops that are already done
           WBAT.join <- WBAT.all
           flagFirst <- F
         }else{
@@ -127,22 +143,25 @@ if(processFlag){
       samp.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% summarize(n=n())
       
       #dim(subset(WBAT.join,IDinter %in% subset(samp.summary,n >= sampleSize)$IDinter))
-      
-      WBAT.join <- subset(WBAT.join,IDinter %in% subset(samp.summary,n >= 6)$IDinter) %>%
-        group_by(stationSet,treshold,IDinter,frequency,phase) %>%
-        slice(sample(n(), min(11, n())))
+    
+      # Sampling the data set if minimal n = 6 bins for the first 11 bins (30 seconds bins)
+      # slice_head does take out the randomization caused by only using slice  
+      WBAT.join <- subset(WBAT.join, IDinter %in% subset(samp.summary, n >= 6)$IDinter) %>%
+        group_by(stationSet, treshold, IDinter, frequency, phase) %>%
+        slice_head(n = 11)
       #sample_n(11,replace = FALSE)
       
       # summarize WBAT data per intervals
-      WBAT.summary <- WBAT.join %>% group_by(stationSet,treshold,IDinter,frequency,phase) %>% 
-        summarize(n=n(),
-                  station=unique(station),
-                  dataSet=unique(dataSet),
-                  SAsd=sd(SA,na.rm=T),
-                  SA=mean(SA,na.rm=T),
-                  depthSA=mean(depthSA,na.rm=T),
-                  datetime=first(datetime),
-                  depthIntegration=mean(depthIntegration,na.rm=T))
+      WBAT.summary <- WBAT.join %>% 
+        group_by(stationSet,treshold,IDinter,frequency,phase) %>% 
+        summarize(n = n(),
+                  station = unique(station),
+                  dataSet = unique(dataSet),
+                  SAsd = sd(SA, na.rm=T),
+                  SA = mean(SA, na.rm=T),
+                  depthSA = mean(depthSA, na.rm=T),
+                  datetime = first(datetime),
+                  depthIntegration = mean(depthIntegration, na.rm=T))
       
       #temp <- subset(WBAT.summary,frequency == 70 & treshold == -60)
       
@@ -185,6 +204,7 @@ if(processFlag){
       #   }
       # }
       
+      # The lat and lon are corrected according to the ETN database
       mySunlightTimes <- getSunlightTimes(date = as.Date(WBAT.summary$datetime),
                                           lat = unique(WBAT.summary$lat),
                                           lon = unique(WBAT.summary$lon), tz = "UTC") # hack, lat/lon needs to be inputed for each station
@@ -386,8 +406,6 @@ for(idxDataSet in unique(df.join.all$dataSet)){
             ggtitle(paste0('CPOD/WBAT(200) relation - ',idxDataSet)))
   }
 }
-
-
 
 # 
 # fileList <- list.files(file.path(dataPath),pattern="WBAT",full.names = T)
