@@ -52,7 +52,7 @@ if(processCPOD){
 if(processWBAT){
   dirList <- list.files(file.path(dataPath,'WBAT'))
   
-  for(myDir in dirList[c(43:46)]){
+  for(myDir in dirList[c(44,46)]){
     print(myDir)
     flagFirst <- T
     fileList <- list.files(file.path(dataPath,'WBAT',myDir),pattern="*.txt")
@@ -152,10 +152,16 @@ if(processWBAT){
       }
     }
 
-    save('WBAT.all',
+     save('WBAT.all',
          file = file.path(dataPath,paste0('WBAT_',myDir,'.RData')))
   } 
 }
+
+WBAT.subset <- subset(WBAT.all,treshold == -50)
+# 
+# write.csv(WBAT.subset,file = paste0(myDir,'_file.csv'))
+# 
+hist(WBAT.subset$SA)
 
 ################################################################################
 # Some controles and first plots 
